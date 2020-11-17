@@ -7,10 +7,10 @@ use std::sync::{Arc, Mutex};
 pub fn handle_output(proc: &Arc<Mutex<Process>>) {
     let mut channels: Vec<PipeStreamReader> = Vec::new();
     channels.push(PipeStreamReader::new(Box::new(
-        proc.lock().unwrap().child.stdout.take().expect("!stdout"),
+        proc.lock().unwrap().child.lock().unwrap().stdout.take().expect("!stdout"),
     )));
     channels.push(PipeStreamReader::new(Box::new(
-        proc.lock().unwrap().child.stderr.take().expect("!stderr"),
+        proc.lock().unwrap().child.lock().unwrap().stderr.take().expect("!stderr"),
     )));
 
     let mut select = Select::new();
@@ -48,7 +48,7 @@ pub fn handle_output(proc: &Arc<Mutex<Process>>) {
         }
     }
 
-    let status = proc.lock().unwrap().child.wait().expect("!wait");
+    let status = proc.lock().unwrap().child.lock().unwrap().wait().expect("!wait");
     let proc_name = &proc.lock().unwrap().name;
     if status.success() {
         log::output(proc_name, "onsucceed handler");
