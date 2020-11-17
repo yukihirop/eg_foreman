@@ -38,10 +38,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for n in 0..con {
             let tmp_proc = process::Process {
                 name: String::from(format!("{}.{}", key, n+1)),
-                child: Command::new(&script.cmd)
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()?,
+                child: Arc::new(
+                        Mutex::new(
+                            Command::new(&script.cmd)
+                                .stdout(Stdio::piped())
+                                .stderr(Stdio::piped())
+                                .spawn()?
+                            )
+                        ),
             };
 
             let proc = Arc::new(Mutex::new(tmp_proc));
@@ -58,13 +62,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let procs2 = procs.clone();
+    let procs_amut = Arc::new(Mutex::new(procs));
+
+    let proc_checks = procs2.into_iter().enumerate().map(|(idx, proc)| {
+        let procs_amut = Arc::clone(&procs_amut);
+        let proc2 = proc.clone();
+        let proc_arc = Arc::clone(&proc2);
+
+        let check_child_terminated = thread::Builder::new()
+            .name(String::from(format!("checking child terminated: {}", idx)))
+            .spawn(move || {
+                let child = &proc_arc.lock().unwrap().child;
+                if let Ok(status) = child.lock().unwrap().wait() {
+                    log::output(&proc_arc.lock().unwrap().name, &format!("exit {}", status));
+                    procs_amut.lock().unwrap().remove(idx);
+                }
+                return ()
+            }).expect("check");
+        
+        check_child_terminated
+    });
+
+    let procs_amut2 = procs_amut.clone();
     let handle_signal = thread::Builder::new()
         .name(String::from("handling signal"))
         .spawn(move || {
-            signal::handle_signal(procs).expect("fail to handle signal")
+            let procs_amut2 = procs_amut.lock().unwrap();
+            signal::handle_signal(procs_amut2).expect("fail to handle signal")
         })?;
     
     proc_handles.push(handle_signal);
+
+    for check in proc_checks.into_iter() {
+        check.join().expect("failed join");
+    }
 
     for handle in proc_handles {
         handle.join().expect("failed join");

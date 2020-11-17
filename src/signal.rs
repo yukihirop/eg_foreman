@@ -14,12 +14,12 @@ pub fn handle_signal(procs: Vec<Arc<Mutex<Process>>>) -> Result<(), Box<dyn std:
       SIGINT => {
         log::output("system", "ctrl-c detected");
         log::output("system", "sending SIGTERM for children");
-        for proc in procs.clone() {
-          let child = &proc.lock().unwrap().child;
+        for proc in procs.iter() {
+          let child = proc.lock().unwrap().child;
 
-          log::output("system", &format!("child pid: {}", child.id()));
+          log::output("system", &format!("child pid: {}", child.lock().unwrap().id()));
 
-          if let Err(e) = signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGTERM) {
+          if let Err(e) = signal::kill(Pid::from_raw(child.lock().unwrap().id() as i32), Signal::SIGTERM) {
             log::error("system", &e);
             log::output("system", "exit 1");
             exit(1);
