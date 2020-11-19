@@ -1,12 +1,11 @@
-use crate::process::{Process};
 use crate::log;
-use std::sync::{Arc, Mutex};
+use std::sync::{Mutex};
 use signal_hook::{iterator::Signals, SIGINT, SIGALRM, SIGHUP, SIGTERM};
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
-use std::process::{exit};
+use std::process::{exit, Child};
 
-pub fn handle_signal(procs: Vec<Arc<Mutex<Process>>>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn handle_signal(child: &Mutex<Child>) -> Result<(), Box<dyn std::error::Error>> {
   let signals = Signals::new(&[SIGALRM, SIGHUP, SIGINT, SIGTERM])?;
 
   for sig in signals.forever() {
@@ -14,16 +13,12 @@ pub fn handle_signal(procs: Vec<Arc<Mutex<Process>>>) -> Result<(), Box<dyn std:
       SIGINT => {
         log::output("system", "ctrl-c detected");
         log::output("system", "sending SIGTERM for children");
-        for proc in procs.iter() {
-          let child = proc.lock().unwrap().child;
+        log::output("system", &format!("child pid: {}", child.lock().unwrap().id()));
 
-          log::output("system", &format!("child pid: {}", child.lock().unwrap().id()));
-
-          if let Err(e) = signal::kill(Pid::from_raw(child.lock().unwrap().id() as i32), Signal::SIGTERM) {
-            log::error("system", &e);
-            log::output("system", "exit 1");
-            exit(1);
-          }
+        if let Err(e) = signal::kill(Pid::from_raw(child.lock().unwrap().id() as i32), Signal::SIGTERM) {
+          log::error("system", &e);
+          log::output("system", "exit 1");
+          exit(1);
         }
       },
       _ => ()

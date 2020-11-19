@@ -15,7 +15,7 @@ struct Script {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut proc_handles = vec![];
+    let mut proc_handle_threads = vec![];
     let mut procs: Vec<Arc<Mutex<process::Process>>> = vec![];
     
     let mut scripts = HashMap::<&str, Script>::new();
@@ -38,14 +38,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for n in 0..con {
             let tmp_proc = process::Process {
                 name: String::from(format!("{}.{}", key, n+1)),
-                child: Arc::new(
-                        Mutex::new(
+                child: Mutex::new(
                             Command::new(&script.cmd)
                                 .stdout(Stdio::piped())
                                 .stderr(Stdio::piped())
                                 .spawn()?
-                            )
-                        ),
+                            ),
+                        
             };
 
             let proc = Arc::new(Mutex::new(tmp_proc));
@@ -57,15 +56,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     output::handle_output(&proc)
                 })?;
         
-            proc_handles.push(handle_output);
+            proc_handle_threads.push(handle_output);
             procs.push(proc2);
         }
     }
 
     let procs2 = procs.clone();
+    let procs3 = procs.clone();
     let procs_amut = Arc::new(Mutex::new(procs));
 
-    let proc_checks = procs2.into_iter().enumerate().map(|(idx, proc)| {
+    let proc_check_child_terminated_threads = procs2.into_iter().enumerate().map(|(idx, proc)| {
         let procs_amut = Arc::clone(&procs_amut);
         let proc2 = proc.clone();
         let proc_arc = Arc::clone(&proc2);
@@ -84,21 +84,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         check_child_terminated
     });
 
-    let procs_amut2 = procs_amut.clone();
-    let handle_signal = thread::Builder::new()
-        .name(String::from("handling signal"))
-        .spawn(move || {
-            let procs_amut2 = procs_amut.lock().unwrap();
-            signal::handle_signal(procs_amut2).expect("fail to handle signal")
-        })?;
-    
-    proc_handles.push(handle_signal);
+    let proc_handle_signal_threads = procs3.clone().into_iter().enumerate().map(|(idx, proc)| {
+        let proc2 = proc.clone();
+        let proc_arc = Arc::clone(&proc2);
 
-    for check in proc_checks.into_iter() {
+        let handlel_signal = thread::Builder::new()
+            .name(String::from(format!("handling signal: {}", idx)))
+            .spawn(move || {
+                let child = &proc_arc.lock().unwrap().child;
+                signal::handle_signal(child).unwrap();
+            }).expect("signal");
+
+        handlel_signal
+    });
+
+    for check in proc_check_child_terminated_threads.into_iter() {
         check.join().expect("failed join");
     }
 
-    for handle in proc_handles {
+    for handle in proc_handle_signal_threads.into_iter() {
+        handle.join().expect("failed join");
+    }
+
+    for handle in proc_handle_threads {
         handle.join().expect("failed join");
     }
 
