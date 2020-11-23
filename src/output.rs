@@ -18,10 +18,20 @@ impl Output {
     pub fn handle_output(&self, proc: &Arc<Mutex<Process>>) {
         let mut channels: Vec<PipeStreamReader> = Vec::new();
         channels.push(PipeStreamReader::new(Box::new(
-            proc.lock().unwrap().child.stdout.take().expect("failed take stdout"),
+            proc.lock()
+                .unwrap()
+                .child
+                .stdout
+                .take()
+                .expect("failed take stdout"),
         )));
         channels.push(PipeStreamReader::new(Box::new(
-            proc.lock().unwrap().child.stderr.take().expect("failed take stderr"),
+            proc.lock()
+                .unwrap()
+                .child
+                .stderr
+                .take()
+                .expect("failed take stderr"),
         )));
 
         let mut select = Select::new();
@@ -34,7 +44,12 @@ impl Output {
         while !stream_eof {
             let operation = select.select();
             let index = operation.index();
-            let received = operation.recv(&channels.get(index).expect("failed get channel at index").lines);
+            let received = operation.recv(
+                &channels
+                    .get(index)
+                    .expect("failed get channel at index")
+                    .lines,
+            );
             let log = &self.log;
 
             match received {
@@ -74,5 +89,30 @@ impl Output {
         // } else {
         //     log::output(proc_name, "onfailed handler");
         // }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow;
+    use std::process::{Command, Stdio};
+
+    #[test]
+    fn test_handle_output() -> anyhow::Result<()> {
+        let proc = Arc::new(Mutex::new(Process {
+            name: String::from("handle_output"),
+            child: Command::new("./test/script/for.sh")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .expect("failed execute handle_output command"),
+        }));
+
+        let proc2 = Arc::clone(&proc);
+        let output = Output::new(0, 10);
+        output.handle_output(&proc2);
+
+        Ok(())
     }
 }
