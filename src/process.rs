@@ -33,7 +33,7 @@ pub fn each_handle_exec_and_output(
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .spawn()
-                        .unwrap(),
+                        .expect("failed execute command"),
                 };
                 let proc = Arc::new(Mutex::new(tmp_proc));
                 let proc2 = Arc::clone(&proc);
@@ -87,8 +87,8 @@ pub fn check_child_terminated(
                                 log::output(
                                     "system",
                                     &format!(
-                                        "sending SIGTERM for {} at pid {}",
-                                        &proc.name, &child_id
+                                        "sending SIGTERM for {0:1$} at pid {2}",
+                                        &proc.name, padding, &child_id
                                     ),
                                     padding,
                                 );
